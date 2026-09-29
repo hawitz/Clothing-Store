@@ -51,7 +51,6 @@
       display: flex;
       flex-direction: column;
     }
-    /* header */
     header {
       display: flex;
       gap: 8px;
@@ -100,7 +99,6 @@
       background: rgba(15, 118, 110, 0.08);
     }
     button:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: line-through; }
-    /* main */
     main {
       max-width: 1200px;
       margin: 0 auto;
@@ -108,7 +106,7 @@
       width: 100%;
       flex: 1;
     }
-    /* welcome page */
+    /* welcome / login page */
     .hero {
       display: flex;
       flex-direction: column;
@@ -142,24 +140,18 @@
       border: 1px solid var(--bd);
       border-radius: 28px;
       padding: 36px 30px;
-      width: 260px;
+      width: 280px;
       box-shadow: var(--shadow);
       transition: transform 0.2s, box-shadow 0.2s;
-      cursor: pointer;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 12px;
     }
-    .role-card:hover {
-      transform: translateY(-6px);
-      box-shadow: 0 20px 30px -12px rgba(0,0,0,0.15);
-    }
     .role-card .emoji { font-size: 56px; line-height: 1; }
     .role-card h3 { font-size: 22px; margin: 4px 0; color: var(--ac); }
     .role-card p { font-size: 14px; color: var(--mu); }
     .role-card button { width: 100%; margin-top: 8px; }
-    /* grid & cards */
     .grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -236,7 +228,6 @@
       font-weight: 500;
     }
     form.f input, form.f select, form.f textarea { width: 100%; }
-    /* cart */
     #cart {
       position: fixed;
       right: 0;
@@ -278,7 +269,6 @@
       border-radius: 30px;
       margin-left: 8px;
     }
-    /* order details */
     details.card { padding: 16px; margin-bottom: 10px; }
     details.card summary { cursor: pointer; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
     details.card summary::-webkit-details-marker { display: none; }
@@ -286,6 +276,19 @@
     details.card[open] summary::before { transform: rotate(90deg); }
     .remove-btn { color: var(--bad); border-color: var(--bd); }
     .remove-btn:hover { background: #fee2e2; border-color: var(--bad); }
+    .login-box {
+      max-width: 380px;
+      margin: 60px auto;
+      padding: 32px;
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--bd);
+      box-shadow: var(--shadow);
+    }
+    .login-box h2 { margin-top: 0; text-align: center; }
+    .login-box label { display: block; margin-bottom: 12px; font-size: 13px; color: var(--mu); }
+    .login-box input { width: 100%; margin-top: 4px; }
+    .login-box .error { color: var(--bad); font-size: 13px; margin-top: 8px; text-align: center; }
     @media (max-width: 600px) {
       .hero h2 { font-size: 32px; }
       .role-card { width: 100%; max-width: 300px; }
@@ -306,7 +309,7 @@
 
   <script>
     // ─── Data & helpers ──────────────────────────────────────────
-    const KEY = 'clothing_store_v2', LOW = 5, $ = id => document.getElementById(id);
+    const KEY = 'clothing_store_v3', LOW = 5, $ = id => document.getElementById(id);
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const peso = n => '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     const today = () => new Date().toISOString().slice(0,10);
@@ -328,7 +331,6 @@
       models.forEach(m => {
         ['S','M','L','XL'].forEach((size, idx) => {
           id++;
-          // ensure stock is above 10, but varies
           const stock = 12 + (id % 9) + (idx === 1 ? 4 : 0);
           items.push({
             ClothingID: id,
@@ -348,8 +350,8 @@
         clothing: items,
         customers: [],
         employees: [
-          { EmployeeID: 1, Username: 'admin', AccessLevel: 'Admin' },
-          { EmployeeID: 2, Username: 'staff', AccessLevel: 'Staff' }
+          { EmployeeID: 1, Username: 'admin', AccessLevel: 'Admin', Password: 'admin123' },
+          { EmployeeID: 2, Username: 'staff', AccessLevel: 'Staff', Password: 'staff123' }
         ],
         sales: [],
         items: [],
@@ -364,6 +366,8 @@
         db = s ? JSON.parse(s) : seed();
         // ensure demo stock stays above 10 if older data loaded
         if (db.clothing) db.clothing.forEach(c => { if (c.StockQuantity < 10) c.StockQuantity = 12 + (c.ClothingID % 7); });
+        // ensure employees have passwords (migration from older version)
+        if (db.employees) db.employees.forEach(e => { if (!e.Password) e.Password = e.Username === 'admin' ? 'admin123' : 'staff123'; });
       } catch (e) { db = seed(); }
     }
     function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) {} }
@@ -396,33 +400,93 @@
       cartRender();
     }
 
-    // ─── HOME PAGE ──────────────────────────────────────────────
+    // ─── HOME PAGE with two login options ───────────────────────
     function home() {
       $('m').innerHTML = `
         <div class="hero">
           <div>
             <h2>Welcome to Threads & Co.</h2>
-            <p>Your everyday clothing store — browse, order, and manage with ease.</p>
+            <p>Sign in to continue as a customer or staff member.</p>
           </div>
           <div class="role-cards">
-            <div class="role-card" onclick="go('shop')">
+            <div class="role-card">
               <div class="emoji">🛍️</div>
               <h3>Customer</h3>
               <p>Browse the collection, add to cart, and place orders.</p>
-              <button class="p" style="width:100%">Start shopping</button>
+              <button class="p" style="width:100%" onclick="customerLogin()">Continue as Customer</button>
             </div>
-            <div class="role-card" onclick="go('admin')">
+            <div class="role-card">
               <div class="emoji">📋</div>
               <h3>Staff / Admin</h3>
               <p>Manage inventory, view sales, customers, and employees.</p>
-              <button style="width:100%">Staff sign in</button>
+              <button style="width:100%" onclick="staffLogin()">Staff Sign In</button>
             </div>
           </div>
         </div>`;
     }
 
+    // ─── CUSTOMER LOGIN (no password, just name) ────────────────
+    function customerLogin() {
+      $('m').innerHTML = `
+        <div class="login-box">
+          <h2>👋 Welcome, Customer</h2>
+          <p class="mu" style="text-align:center; margin-bottom:20px;">Enter your name to start shopping</p>
+          <form onsubmit="event.preventDefault();doCustomerLogin(this)">
+            <label>Your name
+              <input name="name" placeholder="e.g. Juan Dela Cruz" required>
+            </label>
+            <button class="p" style="width:100%; margin-top:8px;">Start Shopping</button>
+          </form>
+          <p class="mu" style="text-align:center; margin-top:16px; font-size:12px;">No password needed — just browse and order.</p>
+          <button style="width:100%; margin-top:12px;" onclick="go('home')">← Back</button>
+        </div>`;
+    }
+
+    function doCustomerLogin(form) {
+      const name = form.name.value.trim();
+      if (!name) return;
+      user = { type: 'customer', name: name };
+      toast('Welcome, ' + name + '!');
+      go('shop');
+    }
+
+    // ─── STAFF LOGIN (username + password) ──────────────────────
+    function staffLogin() {
+      $('m').innerHTML = `
+        <div class="login-box">
+          <h2>🔐 Staff Sign In</h2>
+          <p class="mu" style="text-align:center; margin-bottom:20px;">Enter your credentials to access records</p>
+          <form onsubmit="event.preventDefault();doStaffLogin(this)">
+            <label>Username
+              <input name="u" placeholder="admin or staff" required autocomplete="username">
+            </label>
+            <label>Password
+              <input name="p" type="password" placeholder="••••••••" required autocomplete="current-password">
+            </label>
+            <div id="loginError" class="error"></div>
+            <button class="p" style="width:100%; margin-top:12px;">Sign In</button>
+          </form>
+          <button style="width:100%; margin-top:12px;" onclick="go('home')">← Back</button>
+          <p class="mu" style="text-align:center; margin-top:16px; font-size:12px;">Demo: admin / admin123 &nbsp;·&nbsp; staff / staff123</p>
+        </div>`;
+    }
+
+    function doStaffLogin(form) {
+      const username = form.u.value.trim();
+      const password = form.p.value;
+      const emp = db.employees.find(e => e.Username === username && e.Password === password);
+      if (!emp) {
+        $('loginError').textContent = 'Invalid username or password.';
+        return;
+      }
+      user = { type: 'staff', ...emp };
+      toast('Signed in as ' + emp.Username);
+      go('admin');
+    }
+
     // ─── SHOP ────────────────────────────────────────────────────
     function shop() {
+      // Customers can access shop; staff also can, but they see it as preview
       const groups = {};
       db.clothing
         .filter(p => (!fCat || p.Category === fCat) && (!fQ || (p.ItemName + p.Brand + p.Color).toLowerCase().includes(fQ.toLowerCase())))
@@ -505,8 +569,8 @@
         }).join('');
         h += `<div class="pr" style="margin:14px 0; font-size:20px;">Total: ${peso(total())}</div>
           <form class="f" style="grid-template-columns:1fr; padding:16px;" onsubmit="event.preventDefault();checkout(this)">
-            <label>First name<input name="fn" required></label>
-            <label>Last name<input name="ln" required></label>
+            <label>First name<input name="fn" required value="${user?.type === 'customer' ? esc(user.name.split(' ')[0] || '') : ''}"></label>
+            <label>Last name<input name="ln" required value="${user?.type === 'customer' ? esc(user.name.split(' ').slice(1).join(' ') || '') : ''}"></label>
             <label>Phone<input name="ph" required inputmode="tel"></label>
             <label>Email<input name="em" type="email"></label>
             <label>Delivery address<textarea name="ad" required rows="2"></textarea></label>
@@ -516,7 +580,6 @@
       $('cart').innerHTML = h;
     }
 
-    // new function to remove order line (customer can remove item from cart)
     function removeFromCart(id) {
       cart = cart.filter(c => c.id != id);
       render();
@@ -547,16 +610,8 @@
 
     // ─── STAFF / ADMIN ──────────────────────────────────────────
     function admin() {
-      if (!user) {
-        $('m').innerHTML = `
-          <h2>Staff sign in</h2>
-          <form class="f card" onsubmit="event.preventDefault();signIn(this)" style="max-width:400px;">
-            <label>Username (from Employees table)
-              <select name="u">${db.employees.map(e => `<option>${esc(e.Username)}</option>`).join('')}</select>
-            </label>
-            <button class="p">Sign in</button>
-          </form>
-          <p class="mu" style="margin-top:12px;">Demo: no password required. Add authentication for production.</p>`;
+      if (!user || user.type !== 'staff') {
+        staffLogin();
         return;
       }
       const T = [['dash', 'Dashboard'], ['inv', 'Items & stock'], ['sales', 'Orders'], ['cust', 'Customers']];
@@ -564,11 +619,10 @@
       $('m').innerHTML = `
         <div class="bar">
           ${T.map(t => `<button class="${tab === t[0] ? 'on' : ''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')}
-          <button onclick="user=null;render()">Sign out (${esc(user.Username)})</button>
+          <button onclick="user=null;go('home')">Sign out (${esc(user.Username)})</button>
         </div>
         ${({dash, inv, sales, cust, emp}[tab] || dash)()}`;
     }
-    function signIn(f) { user = db.employees.find(e => e.Username == f.u.value); render(); }
 
     function dash() {
       const rev = db.sales.reduce((s, x) => s + x.TotalAmount, 0);
@@ -655,7 +709,6 @@
       save(); render();
     }
 
-    // ─── SALES with remove order feature (staff) ─────────────────
     function sales() {
       if (!db.sales.length) return '<p class="mu">No orders yet.</p>';
       return '<h2>🧾 Orders</h2>' + db.sales.slice().reverse().map(s => {
@@ -675,18 +728,15 @@
       }).join('');
     }
 
-    // remove order (staff only) + restock
     function removeOrder(saleId) {
       if (!confirm('Remove this order permanently? Stock will be restored.')) return;
       const sale = db.sales.find(s => s.SaleID == saleId);
       if (!sale) return;
-      // restock items from this order
       const saleItems = db.items.filter(i => i.SaleID == saleId);
       saleItems.forEach(si => {
         const p = it(si.ClothingID);
         if (p) p.StockQuantity += si.Quantity;
       });
-      // remove sale and its line items
       db.sales = db.sales.filter(s => s.SaleID != saleId);
       db.items = db.items.filter(i => i.SaleID != saleId);
       save();
@@ -712,7 +762,7 @@
             ${db.employees.map(e => `<tr><td>${e.EmployeeID}</td><td>${esc(e.Username)}</td><td>${esc(e.AccessLevel)}</td></tr>`).join('')}
           </table>
         </div>
-        <p style="margin-top:20px;"><button onclick="if(confirm('Reset all demo data?')){localStorage.removeItem(KEY);load();cart=[];user=null;render()}">🔄 Reset demo data</button></p>`;
+        <p style="margin-top:20px;"><button onclick="if(confirm('Reset all demo data?')){localStorage.removeItem(KEY);load();cart=[];user=null;go('home')}">🔄 Reset demo data</button></p>`;
     }
 
     const cats = () => [...new Set(db.clothing.map(x => x.Category))];
