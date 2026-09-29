@@ -106,7 +106,6 @@
       width: 100%;
       flex: 1;
     }
-    /* welcome / login page */
     .hero {
       display: flex;
       flex-direction: column;
@@ -314,7 +313,6 @@
     const peso = n => '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     const today = () => new Date().toISOString().slice(0,10);
 
-    // richer seed with images (icons and gradient backgrounds)
     function seed() {
       const models = [
         { name:'Classic Tee', cat:'Tops', brand:'Basic Co', color:'White', price:399, icon:'👕', bg:'linear-gradient(135deg,#f0f0f0,#d4d4d4)' },
@@ -364,9 +362,7 @@
       try {
         const s = localStorage.getItem(KEY);
         db = s ? JSON.parse(s) : seed();
-        // ensure demo stock stays above 10 if older data loaded
         if (db.clothing) db.clothing.forEach(c => { if (c.StockQuantity < 10) c.StockQuantity = 12 + (c.ClothingID % 7); });
-        // ensure employees have passwords (migration from older version)
         if (db.employees) db.employees.forEach(e => { if (!e.Password) e.Password = e.Username === 'admin' ? 'admin123' : 'staff123'; });
       } catch (e) { db = seed(); }
     }
@@ -383,6 +379,15 @@
 
     // ─── navigation ──────────────────────────────────────────────
     function go(v) {
+      if (v === 'admin' && (!user || user.type !== 'staff')) {
+        view = 'home';
+        $('t-home').className = 'on';
+        $('t-shop').className = '';
+        $('t-admin').className = 'on';
+        $('cart').classList.remove('o');
+        staffLogin();
+        return;
+      }
       view = v;
       $('t-home').className = v === 'home' ? 'on' : '';
       $('t-shop').className = v === 'shop' ? 'on' : '';
@@ -425,7 +430,7 @@
         </div>`;
     }
 
-    // ─── CUSTOMER LOGIN (no password, just name) ────────────────
+    // ─── CUSTOMER LOGIN ─────────────────────────────────────────
     function customerLogin() {
       $('m').innerHTML = `
         <div class="login-box">
@@ -450,7 +455,7 @@
       go('shop');
     }
 
-    // ─── STAFF LOGIN (username + password) ──────────────────────
+    // ─── STAFF LOGIN ────────────────────────────────────────────
     function staffLogin() {
       $('m').innerHTML = `
         <div class="login-box">
@@ -486,7 +491,6 @@
 
     // ─── SHOP ────────────────────────────────────────────────────
     function shop() {
-      // Customers can access shop; staff also can, but they see it as preview
       const groups = {};
       db.clothing
         .filter(p => (!fCat || p.Category === fCat) && (!fQ || (p.ItemName + p.Brand + p.Color).toLowerCase().includes(fQ.toLowerCase())))
@@ -769,6 +773,8 @@
 
     // ─── start ──────────────────────────────────────────────────
     load();
+    user = null;
+    view = 'home';
     render();
   </script>
 </body>
