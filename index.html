@@ -292,6 +292,9 @@
       .hero h2 { font-size: 32px; }
       .role-card { width: 100%; max-width: 300px; }
     }
+    .restock-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .restock-cell select { padding: 4px 8px; font-size: 13px; border-radius: 8px; width: auto; }
+    .restock-cell button { padding: 4px 8px; font-size: 13px; }
   </style>
 </head>
 <body>
@@ -713,7 +716,20 @@
               <td>${esc(x.Color)}</td>
               <td>${peso(x.Price)}</td>
               <td class="${x.StockQuantity <= LOW ? 'low' : ''}">${x.StockQuantity}</td>
-              <td><button onclick="rs(${x.ClothingID},10)">+10</button> <button onclick="rs(${x.ClothingID},-1)">−1</button></td>
+              <td>
+                <div class="restock-cell">
+                  <select id="rs-sel-${x.ClothingID}" style="width:auto;">
+                    <option value="">Qty</option>
+                    <option value="5">5</option>
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                  </select>
+                  <input id="rs-inp-${x.ClothingID}" type="number" min="1" value="10" style="width:70px; padding:4px 6px; font-size:13px;">
+                  <button onclick="rsSelect(${x.ClothingID})" style="padding:4px 8px; font-size:13px;">+</button>
+                  <button onclick="rs(${x.ClothingID},-1)" style="padding:4px 8px; font-size:13px;">−1</button>
+                </div>
+              </td>
             </tr>`).join('')}
           </table>
         </div>`;
@@ -739,6 +755,24 @@
       if (x.StockQuantity + d < 0) return toast('Stock cannot go below zero');
       x.StockQuantity += d;
       save(); render();
+    }
+    function rsSelect(id) {
+      const sel = $('rs-sel-' + id);
+      const inp = $('rs-inp-' + id);
+      let amount = 0;
+      if (sel && sel.value) {
+        amount = parseInt(sel.value, 10);
+        // sync the input to show the chosen amount
+        if (inp) inp.value = amount;
+      } else if (inp) {
+        amount = parseInt(inp.value, 10);
+      }
+      if (!amount || amount < 1) return toast('Enter or select a restock amount');
+      const x = it(id);
+      x.StockQuantity += amount;
+      save();
+      toast('Restocked ' + x.ItemName + ' by ' + amount);
+      render();
     }
 
     function sales() {
