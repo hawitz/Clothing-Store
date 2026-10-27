@@ -292,9 +292,13 @@
       .hero h2 { font-size: 32px; }
       .role-card { width: 100%; max-width: 300px; }
     }
-    .restock-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-    .restock-cell select { padding: 4px 8px; font-size: 13px; border-radius: 8px; width: auto; }
-    .restock-cell button { padding: 4px 8px; font-size: 13px; }
+    .stepper { display: flex; align-items: center; gap: 4px; }
+    .stepper button { padding: 4px 10px; font-size: 15px; font-weight: 700; min-width: 32px; }
+    .stepper .qty-display { min-width: 32px; text-align: center; font-weight: 600; }
+    .profit { color: #15803d; font-weight: 700; }
+    .loss { color: var(--bad); font-weight: 700; }
+    .expense-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .expense-form input, .expense-form select { width: 100%; }
   </style>
 </head>
 <body>
@@ -311,10 +315,12 @@
 
   <script>
     // ─── Data & helpers ──────────────────────────────────────────
-    const KEY = 'clothing_store_v3', LOW = 5, $ = id => document.getElementById(id);
+    const KEY = 'clothing_store_v4', LOW = 5, $ = id => document.getElementById(id);
     const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const peso = n => '₱' + Number(n).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     const today = () => new Date().toISOString().slice(0,10);
+    const VAT_RATE = 0.12; // 12% VAT (Philippines)
+    const INCOME_TAX_RATE = 0.25; // 25% corporate income tax on net income
 
     function seed() {
       const models = [
@@ -356,6 +362,12 @@
         ],
         sales: [],
         items: [],
+        expenses: [
+          { ExpenseID: 1, Category: 'Supplies', Description: 'Fabric & raw materials', Amount: 15000, Date: today() },
+          { ExpenseID: 2, Category: 'Facilities', Description: 'Rent & utilities', Amount: 8000, Date: today() },
+          { ExpenseID: 3, Category: 'Logistics', Description: 'Shipping & delivery', Amount: 3500, Date: today() },
+          { ExpenseID: 4, Category: 'Marketing', Description: 'Ads & promotions', Amount: 2500, Date: today() },
+        ],
       };
     }
 
@@ -365,6 +377,7 @@
       try {
         const s = localStorage.getItem(KEY);
         db = s ? JSON.parse(s) : seed();
+        if (!db.expenses) db.expenses = seed().expenses;
         if (db.clothing) db.clothing.forEach(c => { if (c.StockQuantity < 10) c.StockQuantity = 12 + (c.ClothingID % 7); });
         if (db.employees) db.employees.forEach(e => { if (!e.Password) e.Password = e.Username === 'admin' ? 'admin123' : 'staff123'; });
       } catch (e) { db = seed(); }
@@ -550,6 +563,8 @@
     }
     function cartToggle() { $('cart').classList.toggle('o'); }
     const total = () => cart.reduce((s, c) => s + c.qty * it(c.id).Price, 0);
+    const subtotal = () => total() / (1 + VAT_RATE);
+    const vatAmount = () => total() - subtotal();
 
     function cartRender() {
       let h = '<div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;"><h2 style="flex:1;margin:0;">🛒 Your cart</h2><button onclick="cartToggle()">✕</button></div>';
@@ -574,7 +589,11 @@
             </div>
           </div>`;
         }).join('');
-        h += `<div class="pr" style="margin:14px 0; font-size:20px;">Total: ${peso(total())}</div>
+        h += `<div style="margin:14px 0; font-size:14px;">
+            <div style="display:flex; justify-content:space-between;"><span class="mu">Subtotal (net of VAT)</span><span>${peso(subtotal())}</span></div>
+            <div style="display:flex; justify-content:space-between;"><span class="mu">VAT (12%)</span><span>${peso(vatAmount())}</span></div>
+            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:20px; margin-top:6px;"><span>Total</span><span>${peso(total())}</span></div>
+          </div>
           <form class="f" style="grid-template-columns:1fr; padding:16px;" onsubmit="event.preventDefault();checkout(this)">
             <label>First name<input name="fn" required value="${user?.type === 'customer' ? esc(user.name.split(' ')[0] || '') : ''}"></label>
             <label>Last name<input name="ln" required value="${user?.type === 'customer' ? esc(user.name.split(' ').slice(1).join(' ') || '') : ''}"></label>
@@ -610,12 +629,17 @@
         db.customers.push(cu);
       } else { cu.Address = v('ad'); cu.Email = v('em') || cu.Email; }
       const sid = nid(db.sales, 'SaleID');
+      const gross = total();
+      const net = subtotal();
+      const vat = vatAmount();
       db.sales.push({
         SaleID: sid,
         CustomerID: cu.CustomerID,
         EmployeeID: null,
         SaleDate: today(),
-        TotalAmount: total(),
+        TotalAmount: gross,
+        Subtotal: net,
+        VAT: vat,
         PaymentMethod: v('payment')
       });
       cart.forEach(c => {
@@ -636,39 +660,151 @@
         staffLogin();
         return;
       }
-      const T = [['dash', 'Dashboard'], ['inv', 'Items & stock'], ['sales', 'Orders'], ['cust', 'Customers']];
+      const T = [['dash', 'Dashboard'], ['fin', 'Financials'], ['inv', 'Items & stock'], ['sales', 'Orders'], ['cust', 'Customers']];
       if (user.AccessLevel == 'Admin') T.push(['emp', 'Employees']);
       $('m').innerHTML = `
         <div class="bar">
           ${T.map(t => `<button class="${tab === t[0] ? 'on' : ''}" onclick="tab='${t[0]}';render()">${t[1]}</button>`).join('')}
           <button onclick="user=null;go('home')">Sign out (${esc(user.Username)})</button>
         </div>
-        ${({dash, inv, sales, cust, emp}[tab] || dash)()}`;
+        ${({dash, fin, inv, sales, cust, emp}[tab] || dash)()}`;
     }
 
+    // ─── FINANCIALS TAB (revenue, tax, expenses, net income) ────
+    function fin() {
+      const grossRevenue = db.sales.reduce((s, x) => s + (x.TotalAmount || 0), 0);
+      const totalVat = db.sales.reduce((s, x) => s + (x.VAT || 0), 0);
+      const netRevenue = grossRevenue - totalVat;
+      const totalExpenses = (db.expenses || []).reduce((s, e) => s + e.Amount, 0);
+      const grossProfit = netRevenue - totalExpenses;
+      const incomeTax = grossProfit > 0 ? grossProfit * INCOME_TAX_RATE : 0;
+      const netIncome = grossProfit - incomeTax;
+
+      // expense breakdown by category
+      const expByCat = {};
+      (db.expenses || []).forEach(e => { expByCat[e.Category] = (expByCat[e.Category] || 0) + e.Amount; });
+
+      return `
+        <h2>💰 Financial overview</h2>
+        <div class="kp">
+          <div class="card">Gross revenue<b>${peso(grossRevenue)}</b></div>
+          <div class="card">VAT collected (12%)<b>${peso(totalVat)}</b></div>
+          <div class="card">Net revenue<b>${peso(netRevenue)}</b></div>
+          <div class="card">Total expenses<b>${peso(totalExpenses)}</b></div>
+          <div class="card">Gross profit<b>${peso(grossProfit)}</b></div>
+          <div class="card">Income tax (25%)<b>${peso(incomeTax)}</b></div>
+          <div class="card" style="border-color:var(--ac);">Net income<b class="${netIncome >= 0 ? 'profit' : 'loss'}">${peso(netIncome)}</b></div>
+        </div>
+
+        <h2>📊 Expense breakdown by category</h2>
+        <div class="tw card" style="padding:0; overflow:hidden;">
+          <table>
+            <tr><th>Category</th><th>Total</th><th>% of expenses</th></tr>
+            ${Object.entries(expByCat).length ? Object.entries(expByCat).map(([cat, amt]) => {
+              const pct = totalExpenses ? ((amt / totalExpenses) * 100).toFixed(1) : 0;
+              return `<tr><td>${esc(cat)}</td><td>${peso(amt)}</td><td>${pct}%</td></tr>`;
+            }).join('') : '<tr><td colspan="3" style="padding:16px;">No expenses recorded</td></tr>'}
+          </table>
+        </div>
+
+        <h2>🧾 Income statement</h2>
+        <div class="tw card" style="padding:0; overflow:hidden;">
+          <table>
+            <tr><th>Line item</th><th>Amount</th></tr>
+            <tr><td>Gross revenue (incl. VAT)</td><td>${peso(grossRevenue)}</td></tr>
+            <tr><td>Less: VAT payable (12%)</td><td>−${peso(totalVat)}</td></tr>
+            <tr><td><b>Net revenue</b></td><td><b>${peso(netRevenue)}</b></td></tr>
+            <tr><td>Less: Operating expenses</td><td>−${peso(totalExpenses)}</td></tr>
+            <tr><td><b>Gross profit</b></td><td><b>${peso(grossProfit)}</b></td></tr>
+            <tr><td>Less: Income tax (25%)</td><td>−${peso(incomeTax)}</td></tr>
+            <tr><td><b>Net income</b></td><td><b class="${netIncome >= 0 ? 'profit' : 'loss'}">${peso(netIncome)}</b></td></tr>
+          </table>
+        </div>
+
+        <h2>➕ Record an expense</h2>
+        <form class="f" onsubmit="event.preventDefault();addExpense(this)">
+          <label>Category
+            <select name="cat">
+              <option>Supplies</option>
+              <option>Facilities</option>
+              <option>Logistics</option>
+              <option>Marketing</option>
+              <option>Salaries</option>
+              <option>Other</option>
+            </select>
+          </label>
+          <label>Description<input name="desc" placeholder="e.g. Fabric order" required></label>
+          <label>Amount<input name="amt" type="number" min="0" step="0.01" required></label>
+          <label>Date<input name="date" type="date" value="${today()}" required></label>
+          <button class="p">Add expense</button>
+        </form>
+
+        <h2>📋 Expense log (${(db.expenses || []).length})</h2>
+        <div class="tw card" style="padding:0; overflow:hidden;">
+          <table>
+            <tr><th>ID</th><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th></th></tr>
+            ${(db.expenses || []).slice().reverse().map(e => `<tr>
+              <td>${e.ExpenseID}</td>
+              <td>${esc(e.Date)}</td>
+              <td>${esc(e.Category)}</td>
+              <td>${esc(e.Description)}</td>
+              <td>${peso(e.Amount)}</td>
+              <td><button class="remove-btn" style="padding:4px 10px; font-size:13px;" onclick="removeExpense(${e.ExpenseID})">🗑️</button></td>
+            </tr>`).join('') || '<tr><td colspan="6" style="padding:16px;">No expenses yet</td></tr>'}
+          </table>
+        </div>`;
+    }
+
+    function addExpense(f) {
+      const amt = +f.amt.value;
+      if (!amt || amt < 0) return toast('Enter a valid amount');
+      if (!db.expenses) db.expenses = [];
+      db.expenses.push({
+        ExpenseID: nid(db.expenses, 'ExpenseID'),
+        Category: f.cat.value,
+        Description: f.desc.value.trim(),
+        Amount: amt,
+        Date: f.date.value || today()
+      });
+      save(); toast('Expense recorded'); render();
+    }
+
+    function removeExpense(id) {
+      if (!confirm('Remove this expense?')) return;
+      db.expenses = db.expenses.filter(e => e.ExpenseID != id);
+      save(); toast('Expense removed'); render();
+    }
+
+    // ─── DASHBOARD ──────────────────────────────────────────────
     function dash() {
-      const rev = db.sales.reduce((s, x) => s + x.TotalAmount, 0);
+      const grossRevenue = db.sales.reduce((s, x) => s + (x.TotalAmount || 0), 0);
+      const totalVat = db.sales.reduce((s, x) => s + (x.VAT || 0), 0);
+      const netRevenue = grossRevenue - totalVat;
+      const totalExpenses = (db.expenses || []).reduce((s, e) => s + e.Amount, 0);
+      const grossProfit = netRevenue - totalExpenses;
+      const incomeTax = grossProfit > 0 ? grossProfit * INCOME_TAX_RATE : 0;
+      const netIncome = grossProfit - incomeTax;
       const units = db.items.reduce((s, x) => s + x.Quantity, 0);
-      const todaySales = db.sales.filter(s => s.SaleDate == today()).reduce((s, x) => s + x.TotalAmount, 0);
+      const todaySales = db.sales.filter(s => s.SaleDate == today()).reduce((s, x) => s + (x.TotalAmount || 0), 0);
       const low = db.clothing.filter(x => x.StockQuantity <= LOW);
       const best = {};
       db.items.forEach(d => best[d.ClothingID] = (best[d.ClothingID] || 0) + d.Quantity);
       const top = Object.entries(best).sort((a, c) => c[1] - a[1]).slice(0, 5);
-      // payment method summary
       const payMethods = {};
-      db.sales.forEach(s => { const m = s.PaymentMethod || 'COD'; payMethods[m] = (payMethods[m] || 0) + s.TotalAmount; });
+      db.sales.forEach(s => { const m = s.PaymentMethod || 'COD'; payMethods[m] = (payMethods[m] || 0) + (s.TotalAmount || 0); });
       return `
         <div class="kp">
-          <div class="card">Total sales<b>${peso(rev)}</b></div>
+          <div class="card">Gross revenue<b>${peso(grossRevenue)}</b></div>
           <div class="card">Today<b>${peso(todaySales)}</b></div>
           <div class="card">Orders<b>${db.sales.length}</b></div>
           <div class="card">Units sold<b>${units}</b></div>
-          <div class="card">Customers<b>${db.customers.length}</b></div>
+          <div class="card">Net income<b class="${netIncome >= 0 ? 'profit' : 'loss'}">${peso(netIncome)}</b></div>
         </div>
+        <p class="mu" style="margin-bottom:16px;">👉 See the <b>Financials</b> tab for the full revenue, tax, and expense breakdown.</p>
         <h2>💳 Revenue by payment method</h2>
         <div class="tw card" style="padding:0; overflow:hidden;">
           <table>
-            <tr><th>Method</th><th>Total</th><th>Orders</th></tr>
+            <tr><th>Method</th><th>Total (incl. VAT)</th><th>Orders</th></tr>
             ${Object.entries(payMethods).length ? Object.entries(payMethods).map(([m, tot]) => {
               const count = db.sales.filter(s => (s.PaymentMethod || 'COD') === m).length;
               return `<tr><td>${esc(m)}</td><td>${peso(tot)}</td><td>${count}</td></tr>`;
@@ -690,6 +826,7 @@
         </div>`;
     }
 
+    // ─── INVENTORY ──────────────────────────────────────────────
     function inv() {
       return `
         <h2>➕ Add item</h2>
@@ -717,17 +854,12 @@
               <td>${peso(x.Price)}</td>
               <td class="${x.StockQuantity <= LOW ? 'low' : ''}">${x.StockQuantity}</td>
               <td>
-                <div class="restock-cell">
-                  <select id="rs-sel-${x.ClothingID}" style="width:auto;">
-                    <option value="">Qty</option>
-                    <option value="5">5</option>
-                    <option value="10">10</option>
-                    <option value="20">20</option>
-                    <option value="50">50</option>
-                  </select>
-                  <input id="rs-inp-${x.ClothingID}" type="number" min="1" value="10" style="width:70px; padding:4px 6px; font-size:13px;">
-                  <button onclick="rsSelect(${x.ClothingID})" style="padding:4px 8px; font-size:13px;">+</button>
-                  <button onclick="rs(${x.ClothingID},-1)" style="padding:4px 8px; font-size:13px;">−1</button>
+                <div class="stepper">
+                  <button onclick="rs(${x.ClothingID},-1)" title="Subtract 1">−</button>
+                  <span class="qty-display">${x.StockQuantity}</span>
+                  <button onclick="rs(${x.ClothingID},1)" title="Add 1">+</button>
+                  <button onclick="rs(${x.ClothingID},10)" title="Add 10" style="font-size:12px;">+10</button>
+                  <button onclick="rs(${x.ClothingID},-10)" title="Subtract 10" style="font-size:12px;">−10</button>
                 </div>
               </td>
             </tr>`).join('')}
@@ -756,29 +888,14 @@
       x.StockQuantity += d;
       save(); render();
     }
-    function rsSelect(id) {
-      const sel = $('rs-sel-' + id);
-      const inp = $('rs-inp-' + id);
-      let amount = 0;
-      if (sel && sel.value) {
-        amount = parseInt(sel.value, 10);
-        // sync the input to show the chosen amount
-        if (inp) inp.value = amount;
-      } else if (inp) {
-        amount = parseInt(inp.value, 10);
-      }
-      if (!amount || amount < 1) return toast('Enter or select a restock amount');
-      const x = it(id);
-      x.StockQuantity += amount;
-      save();
-      toast('Restocked ' + x.ItemName + ' by ' + amount);
-      render();
-    }
 
+    // ─── ORDERS ─────────────────────────────────────────────────
     function sales() {
       if (!db.sales.length) return '<p class="mu">No orders yet.</p>';
       return '<h2>🧾 Orders · purchase history</h2>' + db.sales.slice().reverse().map(s => {
         const c = db.customers.find(x => x.CustomerID == s.CustomerID);
+        const sub = s.Subtotal != null ? s.Subtotal : (s.TotalAmount / (1 + VAT_RATE));
+        const vat = s.VAT != null ? s.VAT : (s.TotalAmount - sub);
         return `<details class="card" style="margin-bottom:10px;">
           <summary>
             <b>Order #${s.SaleID}</b> · ${s.SaleDate} · ${esc(c.FirstName + ' ' + c.LastName)} · ${peso(s.TotalAmount)}
@@ -786,6 +903,11 @@
             <button class="remove-btn" style="margin-left:auto; padding:4px 12px; font-size:13px;" onclick="event.stopPropagation(); removeOrder(${s.SaleID})">🗑️ Remove order</button>
           </summary>
           <p class="mu" style="margin-top:10px;">${esc(c.Phone)} · ${esc(c.Email || 'no email')} · ${esc(c.Address)}</p>
+          <div style="margin:8px 0; font-size:13px;">
+            <div>Subtotal (net): ${peso(sub)}</div>
+            <div>VAT (12%): ${peso(vat)}</div>
+            <div><b>Total paid: ${peso(s.TotalAmount)}</b></div>
+          </div>
           <div class="tw">
             <table>
               ${db.items.filter(d => d.SaleID == s.SaleID).map(d => `<tr><td>${esc(it(d.ClothingID).ItemName)} (${esc(it(d.ClothingID).Size)})</td><td>${d.Quantity} × ${peso(d.UnitPrice)}</td></tr>`).join('')}
@@ -811,19 +933,21 @@
       render();
     }
 
+    // ─── CUSTOMERS ──────────────────────────────────────────────
     function cust() {
       return `<h2>👥 Customers (${db.customers.length})</h2>
         <div class="tw card" style="padding:0; overflow:hidden;">
           <table>
             <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Total spent</th></tr>
             ${db.customers.map(c => {
-              const spent = db.sales.filter(s => s.CustomerID == c.CustomerID).reduce((a, s) => a + s.TotalAmount, 0);
+              const spent = db.sales.filter(s => s.CustomerID == c.CustomerID).reduce((a, s) => a + (s.TotalAmount || 0), 0);
               return `<tr><td>${c.CustomerID}</td><td>${esc(c.FirstName + ' ' + c.LastName)}</td><td>${esc(c.Phone)}</td><td>${esc(c.Email)}</td><td>${esc(c.Address)}</td><td>${peso(spent)}</td></tr>`;
             }).join('') || '<tr><td colspan="6" style="padding:16px;">None yet</td></tr>'}
           </table>
         </div>`;
     }
 
+    // ─── EMPLOYEES ──────────────────────────────────────────────
     function emp() {
       return `<h2>🧑‍💼 Employees</h2>
         <div class="tw card" style="padding:0; overflow:hidden;">
