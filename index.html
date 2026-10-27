@@ -578,6 +578,14 @@
             <label>Phone<input name="ph" required inputmode="tel"></label>
             <label>Email<input name="em" type="email"></label>
             <label>Delivery address<textarea name="ad" required rows="2"></textarea></label>
+            <label>Payment method
+              <select name="payment">
+                <option value="COD">Cash on Delivery</option>
+                <option value="GCash">GCash</option>
+                <option value="Bank">Bank Transfer</option>
+                <option value="Card">Credit / Debit Card</option>
+              </select>
+            </label>
             <button class="p" style="font-size:16px; padding:12px;">Place order · pay on delivery</button>
           </form>`;
       }
@@ -599,7 +607,14 @@
         db.customers.push(cu);
       } else { cu.Address = v('ad'); cu.Email = v('em') || cu.Email; }
       const sid = nid(db.sales, 'SaleID');
-      db.sales.push({ SaleID: sid, CustomerID: cu.CustomerID, EmployeeID: null, SaleDate: today(), TotalAmount: total() });
+      db.sales.push({
+        SaleID: sid,
+        CustomerID: cu.CustomerID,
+        EmployeeID: null,
+        SaleDate: today(),
+        TotalAmount: total(),
+        PaymentMethod: v('payment')
+      });
       cart.forEach(c => {
         const p = it(c.id);
         db.items.push({ SaleID: sid, ClothingID: c.id, Quantity: c.qty, UnitPrice: p.Price });
@@ -636,6 +651,9 @@
       const best = {};
       db.items.forEach(d => best[d.ClothingID] = (best[d.ClothingID] || 0) + d.Quantity);
       const top = Object.entries(best).sort((a, c) => c[1] - a[1]).slice(0, 5);
+      // payment method summary
+      const payMethods = {};
+      db.sales.forEach(s => { const m = s.PaymentMethod || 'COD'; payMethods[m] = (payMethods[m] || 0) + s.TotalAmount; });
       return `
         <div class="kp">
           <div class="card">Total sales<b>${peso(rev)}</b></div>
@@ -643,6 +661,16 @@
           <div class="card">Orders<b>${db.sales.length}</b></div>
           <div class="card">Units sold<b>${units}</b></div>
           <div class="card">Customers<b>${db.customers.length}</b></div>
+        </div>
+        <h2>💳 Revenue by payment method</h2>
+        <div class="tw card" style="padding:0; overflow:hidden;">
+          <table>
+            <tr><th>Method</th><th>Total</th><th>Orders</th></tr>
+            ${Object.entries(payMethods).length ? Object.entries(payMethods).map(([m, tot]) => {
+              const count = db.sales.filter(s => (s.PaymentMethod || 'COD') === m).length;
+              return `<tr><td>${esc(m)}</td><td>${peso(tot)}</td><td>${count}</td></tr>`;
+            }).join('') : '<tr><td colspan="3" style="padding:16px;">No sales yet</td></tr>'}
+          </table>
         </div>
         <h2>⚠️ Low stock (${LOW} or fewer) — ${low.length}</h2>
         <div class="tw card" style="padding:0; overflow:hidden;">
@@ -715,11 +743,12 @@
 
     function sales() {
       if (!db.sales.length) return '<p class="mu">No orders yet.</p>';
-      return '<h2>🧾 Orders</h2>' + db.sales.slice().reverse().map(s => {
+      return '<h2>🧾 Orders · purchase history</h2>' + db.sales.slice().reverse().map(s => {
         const c = db.customers.find(x => x.CustomerID == s.CustomerID);
         return `<details class="card" style="margin-bottom:10px;">
           <summary>
             <b>Order #${s.SaleID}</b> · ${s.SaleDate} · ${esc(c.FirstName + ' ' + c.LastName)} · ${peso(s.TotalAmount)}
+            <span class="badge" style="font-size:11px;">${esc(s.PaymentMethod || 'COD')}</span>
             <button class="remove-btn" style="margin-left:auto; padding:4px 12px; font-size:13px;" onclick="event.stopPropagation(); removeOrder(${s.SaleID})">🗑️ Remove order</button>
           </summary>
           <p class="mu" style="margin-top:10px;">${esc(c.Phone)} · ${esc(c.Email || 'no email')} · ${esc(c.Address)}</p>
@@ -752,8 +781,11 @@
       return `<h2>👥 Customers (${db.customers.length})</h2>
         <div class="tw card" style="padding:0; overflow:hidden;">
           <table>
-            <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th></tr>
-            ${db.customers.map(c => `<tr><td>${c.CustomerID}</td><td>${esc(c.FirstName + ' ' + c.LastName)}</td><td>${esc(c.Phone)}</td><td>${esc(c.Email)}</td><td>${esc(c.Address)}</td></tr>`).join('') || '<tr><td colspan="5" style="padding:16px;">None yet</td></tr>'}
+            <tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Address</th><th>Total spent</th></tr>
+            ${db.customers.map(c => {
+              const spent = db.sales.filter(s => s.CustomerID == c.CustomerID).reduce((a, s) => a + s.TotalAmount, 0);
+              return `<tr><td>${c.CustomerID}</td><td>${esc(c.FirstName + ' ' + c.LastName)}</td><td>${esc(c.Phone)}</td><td>${esc(c.Email)}</td><td>${esc(c.Address)}</td><td>${peso(spent)}</td></tr>`;
+            }).join('') || '<tr><td colspan="6" style="padding:16px;">None yet</td></tr>'}
           </table>
         </div>`;
     }
